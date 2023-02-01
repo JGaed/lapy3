@@ -29,17 +29,18 @@ def read_log(log_filename):
 
     for line in lines:
         txt_line = line.strip()
-        if 'Step' in txt_line:
-            run_log_dict[run] = list()
-            add = 1
-            parameters_i = txt_line.split()
-            run_log_dict[run].append(txt_line.split())
-        if 'Loop' in txt_line:
-            add = 0
-            run = run + 1
-        if add == 1:
-            if txt_line.split()[0].isnumeric():
+        if len(line.split())!=0:
+            if 'Step' in txt_line:
+                run_log_dict[run] = list()
+                add = 1
+                parameters_i = txt_line.split()
                 run_log_dict[run].append(txt_line.split())
+            if 'Loop' in txt_line:
+                add = 0
+                run = run + 1
+            if add == 1:
+                if txt_line.split()[0].isnumeric():
+                    run_log_dict[run].append(txt_line.split())
 
     df_log_dict = {}
     for i in list(run_log_dict.keys()):
@@ -49,6 +50,8 @@ def read_log(log_filename):
         df = pandas.DataFrame(data_i, columns=names_i)
         df = df.apply(pandas.to_numeric, errors='coerce')
         df_log_dict[i] = df
+    
+    log_file.close()
         
     return df_log_dict
 

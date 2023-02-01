@@ -7,6 +7,7 @@ Created on Tue Apr 28 14:46:57 2020
 
 import numpy
 import pandas
+from helper_functions import check_greater
 
 #---------------------------------------------------
 # Class for trajectories in .xyz-fileformat.
@@ -79,7 +80,7 @@ class xyz_trajectory:
         return self
 
 #---------------------------------------------------
-# Class for trajectories in .xyz-fileformat.
+# Class for trajectories in LAMMPS-dump-fileformat.
 # Supports variable number of atoms per frame.
 #
 # Class is iterable and subscriptable by the n-frames
@@ -135,15 +136,19 @@ class lammpstrj:
         return contents
     
     def read_lines(self, lines_of_interest):
-        self.current_line = 0
         lines_to_return = list()
-        with open(self.path) as infile:
-            while self.current_line <= numpy.max(lines_of_interest):
-                for line in infile:
-                    if numpy.isin(self.current_line, lines_of_interest):
-                        lines_to_return.append(line)
-                    self.current_line +=1
-            return lines_to_return
+        if not check_greater(lines_of_interest, self.current_line):
+            self.file.seek(0)
+            self.current_line = 0
+        for line in self.file:
+            print(line)
+            if numpy.isin(self.current_line, lines_of_interest):
+                lines_to_return.append(line.strip())
+            self.current_line +=1
+            if self.current_line > numpy.max(lines_of_interest):
+                break
+        return lines_to_return
+
 
     def __get_traj_properties(self):
         timesteps = list()
@@ -173,3 +178,14 @@ class lammpstrj:
     def __getitem__(self, x):
         self.frame = x
         return self
+
+    def __exit__(self):
+        self.file.close()
+
+
+class lammpstrj2:
+    def __init__(self, filepath):
+        self.path = filepath
+        self.file = open(self.path, "r")
+        self.current_line = 0
+
