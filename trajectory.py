@@ -110,6 +110,7 @@ class lammpstrj:
         self.start_line_per_frame = numpy.hstack(([0], numpy.cumsum(numpy.array(self.atoms_per_frame) + 9)[:-1]))
         self.n_frames = len(self.atoms_per_frame)
         self.iteration_started = False
+        self.current_line = 0
         self.__iter__()
         self.__print()
 
@@ -132,6 +133,17 @@ class lammpstrj:
         with open(self.path) as f:
             contents = f.readlines()
         return contents
+    
+    def read_lines(self, lines_of_interest):
+        self.current_line = 0
+        lines_to_return = list()
+        with open(self.path) as infile:
+            while self.current_line <= numpy.max(lines_of_interest):
+                for line in infile:
+                    if numpy.isin(self.current_line, lines_of_interest):
+                        lines_to_return.append(line)
+                    self.current_line +=1
+            return lines_to_return
 
     def __get_traj_properties(self):
         timesteps = list()
@@ -144,7 +156,7 @@ class lammpstrj:
         return timesteps, atoms_per_frame 
 
     def __print(self):
-        print('Loaded LAMMPS trajectory file {file} containing {frames} frames.'.format(file=self.path, frames=self.n_frames))
+        print('Loaded LAMMPS trajectory file "{file}" containing {frames} frames.'.format(file=self.path, frames=self.n_frames))
 
     def __iter__(self):
         self.frame = 0
