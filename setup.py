@@ -15,4 +15,5 @@ setup(name='lapy3',
       url='https://github.com/JGaed/lapy3',
       setup_requires=["numpy", "pandas"],
       install_requires=["numpy", "pandas"], 
+      packages=['pickle_functions', 'lammps_py3', 'lammps', 'trajectory', 'functions', 'system']
      )
