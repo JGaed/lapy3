@@ -13,5 +13,6 @@ setup(name='lapy3',
       author='Johannes Gaeding',
       author_email='johannes.gaeding@tuhh.de',
       url='https://github.com/JGaed/lapy3',
-      packages=['numpy', 'pandas'],
+      setup_requires=["numpy", "pandas"],
+      install_requires=["numpy", "pandas"], 
      )
