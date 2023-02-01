@@ -88,7 +88,7 @@ def reduce_memory_usage(df, verbose=True):
                     df[col] = df[col].astype(np.float32)
                 else:
                     df[col] = df[col].astype(np.float64)
-    end_mem = df.memory_usage().sum() / 1024  2
+    end_mem = df.memory_usage().sum() / 1024
     if verbose:
         print(
             "Mem. usage decreased to {:.2f} Mb ({:.1f}% reduction)".format(
