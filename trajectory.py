@@ -7,7 +7,8 @@ Created on Tue Apr 28 14:46:57 2020
 
 import numpy
 import pandas
-from helper_functions import check_greater
+import helper_functions
+from file_format_settings import lammps_dump as ldump
 
 #---------------------------------------------------
 # Class for trajectories in .xyz-fileformat.
@@ -137,7 +138,7 @@ class lammpstrj:
     
     def read_lines(self, lines_of_interest):
         lines_to_return = list()
-        if not check_greater(lines_of_interest, self.current_line):
+        if not helper_functions.check_greater(lines_of_interest, self.current_line):
             self.file.seek(0)
             self.current_line = 0
         for line in self.file:
@@ -148,7 +149,6 @@ class lammpstrj:
             if self.current_line > numpy.max(lines_of_interest):
                 break
         return lines_to_return
-
 
     def __get_traj_properties(self):
         timesteps = list()
@@ -184,8 +184,173 @@ class lammpstrj:
 
 
 class lammpstrj2:
-    def __init__(self, filepath):
-        self.path = filepath
-        self.file = open(self.path, "r")
-        self.current_line = 0
 
+    def __init__(self, filepath, memory = False):
+        self.path = filepath
+        self.file = open(self.path)
+        self.frame = 0
+        self.n_lines = self.__get_number_of_lines()
+        self.current_line = 0
+        self.saved_line = None
+        self.iteration_started = False  
+        self.read_whole_content = False
+        self.properties_read = False
+        self.memory = memory
+        self.atoms_per_frame = list()
+        self.timesteps = list()
+
+        if memory:
+            self.__read_file_content()
+            self.timesteps, self.atoms_per_frame = self.__get_traj_properties()
+        self.call_frame(self.frame)
+        self.__print()
+    
+    def read_traj(self):
+        self.timesteps, self.atoms_per_frame = self.__get_traj_properties()
+        return self
+
+    def data(self):
+        return numpy.array([line.split() for line in self.current_frame_data[ldump.lines_header_total:]]).astype(float)        
+
+    def cell(self):
+        return numpy.array([i.split() for i in self.current_frame_data[ldump.lines_cell[0]:ldump.lines_cell[-1]+1]]).astype(float).tolist()
+
+    def columns(self):     
+        return self.current_frame_data[ldump.line_column_names].split()[2:]
+    
+    def df_frame(self):
+        return pandas.DataFrame(data=self.data(), columns=self.columns())
+
+    def __read_file_content(self):
+        self.file_content = self.file.readlines()
+        self.file.close()
+        self.read_whole_content = True
+        return self
+
+    def __get_number_of_lines(self):
+        with open(self.path, "r",encoding="utf-8",errors='ignore') as f:
+            return (sum(bl.count("\n") for bl in helper_functions.blocks(f)))
+    
+    def read_lines(self, lines_of_interest):
+        lines_to_return = list()
+        self.init_line = self.current_line
+        lines_of_interest = helper_functions.to_array(lines_of_interest)
+        if numpy.max(lines_of_interest)>self.n_lines:
+            print('Requested number of line is larger then total lines in trajectory!')
+
+        else:      
+            if ((self.saved_line!= type(None)) and len(lines_of_interest)==1 and any(lines_of_interest==self.init_line-1)):
+                lines_to_return.append(self.saved_line)
+                return lines_to_return
+            else:
+                if not helper_functions.check_greater(lines_of_interest, self.init_line):
+                    self.file.seek(0)
+                    self.current_line = 0
+                    self.init_line = 0
+                for pos, l_num in enumerate(self.file):
+                    if pos+self.init_line in lines_of_interest:
+                        lines_to_return.append(l_num.replace("\n", ""))
+                    if pos+self.init_line >= numpy.max(lines_of_interest):
+                        break
+                self.current_line = pos+self.init_line+1
+                self.saved_line = l_num.replace("\n", "")
+                return lines_to_return
+
+    def call_frame(self, frame_number):
+        if frame_number == self.frame and frame_number !=0:
+            return self
+        else:
+            self.frame = frame_number
+            if self.read_whole_content == True:
+                self.current_frame_data = self.file_content[self.start_line_per_frame[self.frame]:self.start_line_per_frame[self.frame]+self.atoms_per_frame[self.frame]+ldump.lines_header_total]
+                return self
+            if self.read_whole_content == False:
+                if self.properties_read == True:
+                    lines = numpy.arange(self.start_line_per_frame[self.frame],self.start_line_per_frame[self.frame]+self.atoms_per_frame[self.frame]+ldump.lines_header_total+1,1)
+                    frame = self.read_lines(lines)
+                    self.current_frame_data = frame
+                    return self
+                if self.properties_read == False:
+                    if frame_number >= len(self.timesteps):
+                        if len(self.atoms_per_frame)!=0:
+                            line = numpy.cumsum(numpy.array(self.atoms_per_frame)+ldump.lines_header_total)[-1]
+                        else:
+                            line = 0
+                        while frame_number >= len(self.timesteps):
+                            if line>0 and line > self.n_lines-(self.atoms_per_frame[-1]+ldump.lines_header_total):
+                                raise ValueError('Timestep {} can not be found in the Trajectory'.format(frame_number))
+
+                            self.timesteps.append(int(self.read_lines(int(line+ldump.line_timestep))[0]))
+                            self.atoms_per_frame.append(int(self.read_lines(int(line+ldump.line_atom_count))[0]))
+                            line += self.atoms_per_frame[-1]+ldump.lines_header_total                   
+                        if line > self.n_lines:
+                            raise ValueError('Timestep {} can not be found in the Trajectory: {}'.format(frame_number))
+                        self.start_line_per_frame = numpy.hstack(([0], numpy.cumsum(numpy.array(self.atoms_per_frame) + ldump.lines_header_total)[:-1]))
+                        lines = numpy.arange(self.start_line_per_frame[self.frame],self.start_line_per_frame[self.frame]+self.atoms_per_frame[self.frame]+ldump.lines_header_total,1)
+                        frame = self.read_lines(lines)
+                        self.current_frame_data = frame
+                        return self
+                    else:
+                        lines = numpy.arange(self.start_line_per_frame[self.frame],self.start_line_per_frame[self.frame]+self.atoms_per_frame[self.frame]+ldump.lines_header_total,1)
+                        frame = self.read_lines(lines)
+                        self.current_frame_data = frame
+                        return self
+
+    def __get_traj_properties(self):
+        if self.memory == True:
+            timesteps = list()
+            atoms_per_frame = list()
+            line = 0
+            while line < self.n_lines:
+                timesteps.append(int(self.file_content[line+ldump.line_timestep]))
+                atoms_per_frame.append(int(self.file_content[line+ldump.line_atom_count]))
+                line = numpy.cumsum(numpy.array(atoms_per_frame)+ldump.lines_header_total)[-1]
+            self.start_line_per_frame = numpy.hstack(([0], numpy.cumsum(numpy.array(atoms_per_frame) + ldump.lines_header_total)[:-1]))
+            self.properties_read = True
+            return timesteps, atoms_per_frame 
+
+        if self.memory == False:
+            timesteps = list()
+            atoms_per_frame = list()
+            line = 0
+            timesteps.append(int(self.read_lines(line+ldump.line_timestep)[0]))
+            atoms_per_frame.append(int(self.read_lines(line+ldump.line_atom_count)[0]))
+            while line+atoms_per_frame[-1]+ldump.lines_header_total < self.n_lines:
+                line += atoms_per_frame[-1]+ldump.lines_header_total
+                timesteps.append(int(self.read_lines(line+ldump.line_timestep)[0]))
+                atoms_per_frame.append(int(self.read_lines(line+ldump.line_atom_count)[0]))
+            self.start_line_per_frame = numpy.hstack(([0], numpy.cumsum(numpy.array(atoms_per_frame) + ldump.lines_header_total)[:-1]))
+            self.properties_read = True
+            return timesteps, atoms_per_frame 
+
+    def __print(self):
+        if self.read_whole_content == True:
+            print('Loaded LAMMPS trajectory file "{file}" containing {frames} frames in memory.'.format(file=self.path, frames=self.n_frames))
+        if self.read_whole_content == False:
+            print('Loaded LAMMPS trajectory file "{file}" with {lines} total lines.'.format(file=self.path, lines=self.n_lines))
+
+    def __iter__(self):
+        print('test')
+        self.call_frame(0)
+        self.frame = 0
+
+        # self.current_frame_data = self.call_frame(self.frame)
+        return self
+
+    def __next__(self):
+        if self.frame < len(self.timesteps):
+            if self.iteration_started:
+                self.frame += 1
+            self.iteration_started = True 
+            self.call_frame(self.frame)
+            return self
+        else:
+            raise StopIteration
+
+    def __getitem__(self, x):
+        self.call_frame(x)
+        self.frame = x
+        return self
+
+    def __exit__(self):
+        self.file.close()
